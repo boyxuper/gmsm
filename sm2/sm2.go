@@ -80,7 +80,25 @@ func (priv *PrivateKey) Sign(random io.Reader, msg []byte, signer crypto.SignerO
 	return b.Bytes()
 }
 
+// sign format = 30 + len(z) + 02 + len(r) + r + 02 + len(s) + s, z being what follows its size, ie 02+len(r)+r+02+len(s)+s
+func (priv *PrivateKey) SignWithUid(random io.Reader, msg []byte, uid []byte) ([]byte, error) {
+	r, s, err := Sm2Sign(priv, msg, uid, random)
+	if err != nil {
+		return nil, err
+	}
+	var b cryptobyte.Builder
+	b.AddASN1(cbasn1.SEQUENCE, func(b *cryptobyte.Builder) {
+		b.AddASN1BigInt(r)
+		b.AddASN1BigInt(s)
+	})
+	return b.Bytes()
+}
+
 func (pub *PublicKey) Verify(msg []byte, sig []byte) bool {
+	return pub.VerifyWithUid(msg, sig, default_uid)
+}
+
+func (pub *PublicKey) VerifyWithUid(msg []byte, sig []byte, uid []byte) bool {
 	var (
 		r, s  = &big.Int{}, &big.Int{}
 		inner cryptobyte.String
@@ -93,14 +111,10 @@ func (pub *PublicKey) Verify(msg []byte, sig []byte) bool {
 		!inner.Empty() {
 		return false
 	}
-	return Sm2Verify(pub, msg, default_uid, r, s)
+	return Sm2Verify(pub, msg, uid, r, s)
 }
 
 func (pub *PublicKey) Sm3Digest(msg, uid []byte) ([]byte, error) {
-	if len(uid) == 0 {
-		uid = default_uid
-	}
-
 	za, err := ZA(pub, uid)
 	if err != nil {
 		return nil, err
@@ -114,7 +128,7 @@ func (pub *PublicKey) Sm3Digest(msg, uid []byte) ([]byte, error) {
 	return e.Bytes(), nil
 }
 
-//****************************Encryption algorithm****************************//
+// ****************************Encryption algorithm****************************//
 func (pub *PublicKey) EncryptAsn1(data []byte, random io.Reader) ([]byte, error) {
 	return EncryptAsn1(pub, data, random)
 }
@@ -123,7 +137,7 @@ func (priv *PrivateKey) DecryptAsn1(data []byte) ([]byte, error) {
 	return DecryptAsn1(priv, data)
 }
 
-//**************************Key agreement algorithm**************************//
+// **************************Key agreement algorithm**************************//
 // KeyExchangeB 协商第二部，用户B调用， 返回共享密钥k
 func KeyExchangeB(klen int, ida, idb []byte, priB *PrivateKey, pubA *PublicKey, rpri *PrivateKey, rpubA *PublicKey) (k, s1, s2 []byte, err error) {
 	return keyExchange(klen, ida, idb, priB, pubA, rpri, rpubA, false)
@@ -177,6 +191,7 @@ func Sm2Sign(priv *PrivateKey, msg, uid []byte, random io.Reader) (r, s *big.Int
 	}
 	return
 }
+
 func Sm2Verify(pub *PublicKey, msg, uid []byte, r, s *big.Int) bool {
 	c := pub.Curve
 	N := c.Params().N
@@ -187,17 +202,13 @@ func Sm2Verify(pub *PublicKey, msg, uid []byte, r, s *big.Int) bool {
 	if r.Cmp(N) >= 0 || s.Cmp(N) >= 0 {
 		return false
 	}
-	if len(uid) == 0 {
-		uid = default_uid
-	}
-	za, err := ZA(pub, uid)
+
+	digest, err := pub.Sm3Digest(msg, uid)
 	if err != nil {
 		return false
 	}
-	e, err := msgHash(za, msg)
-	if err != nil {
-		return false
-	}
+
+	e := new(big.Int).SetBytes(digest)
 	t := new(big.Int).Add(r, s)
 	t.Mod(t, N)
 	if t.Sign() == 0 {
@@ -214,12 +225,12 @@ func Sm2Verify(pub *PublicKey, msg, uid []byte, r, s *big.Int) bool {
 }
 
 /*
-    za, err := ZA(pub, uid)
-	if err != nil {
-		return
-	}
-	e, err := msgHash(za, msg)
-	hash=e.getBytes()
+	    za, err := ZA(pub, uid)
+		if err != nil {
+			return
+		}
+		e, err := msgHash(za, msg)
+		hash=e.getBytes()
 */
 func Verify(pub *PublicKey, hash []byte, r, s *big.Int) bool {
 	c := pub.Curve

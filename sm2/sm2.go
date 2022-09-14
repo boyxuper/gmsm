@@ -426,7 +426,7 @@ func keyExchange(klen int, ida, idb []byte, pri *PrivateKey, pub *PublicKey, rpr
 		pzb = &pri.PublicKey
 	}
 	zb, err := ZA(pzb, idb)
-	k, ok := kdf(klen, vx.Bytes(), vy.Bytes(), za, zb)
+	k, ok := kdf(klen, fillBytes(vx.Bytes(), 32), fillBytes(vy.Bytes(), 32), za, zb)
 	if !ok {
 		err = errors.New("kdf: zero key")
 		return
@@ -448,6 +448,14 @@ func msgHash(za, msg []byte) (*big.Int, error) {
 	e.Write(za)
 	e.Write(msg)
 	return new(big.Int).SetBytes(e.Sum(nil)[:32]), nil
+}
+
+func fillBytes(b []byte, length int) []byte {
+	if n := len(b); n < length {
+		b = append(zeroByteSlice()[:32-n], b...)
+	}
+
+	return b
 }
 
 // ZA = H256(ENTLA || IDA || a || b || xG || yG || xA || yA)

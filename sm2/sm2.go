@@ -34,7 +34,10 @@ import (
 )
 
 var (
-	default_uid = []byte{0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38}
+	DefaultUID = []byte{
+		0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38,
+		0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38,
+	}
 
 	C1C3C2 = 0
 	C1C2C3 = 1
@@ -68,7 +71,7 @@ var two = new(big.Int).SetInt64(2)
 
 // sign format = 30 + len(z) + 02 + len(r) + r + 02 + len(s) + s, z being what follows its size, ie 02+len(r)+r+02+len(s)+s
 func (priv *PrivateKey) Sign(random io.Reader, msg []byte, signer crypto.SignerOpts) ([]byte, error) {
-	r, s, err := Sm2Sign(priv, msg, nil, random)
+	r, s, err := Sm2Sign(priv, msg, DefaultUID, random)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +98,7 @@ func (priv *PrivateKey) SignWithUid(random io.Reader, msg []byte, uid []byte) ([
 }
 
 func (pub *PublicKey) Verify(msg []byte, sig []byte) bool {
-	return pub.VerifyWithUid(msg, sig, default_uid)
+	return pub.VerifyWithUid(msg, sig, DefaultUID)
 }
 
 func (pub *PublicKey) VerifyWithUid(msg []byte, sig []byte, uid []byte) bool {
